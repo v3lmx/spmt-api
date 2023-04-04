@@ -1,0 +1,32 @@
+[package]
+name = "spmtb"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+
+# Actix
+actix-web = "4"
+actix-cors = "0.6"
+actix-session = { version = "0.7", features = ["cookie-session"] }
+
+# Spotify
+rspotify = { version = "0.11.5" }
+rspotify-macros = "0.11.5"
+
+# Database
+sea-orm = { version = "^0", features = [ "sqlx-postgres", "runtime-actix-rustls", "macros", "debug-print" ] }
+
+# Logs
+log = "0.4"
+pretty_env_logger = "0.4"
+
+# Utils
+serde = { version = "1.0", features = ["derive"] }
+# tokio = { version = "1", features = ["full"] }
+# reqwest = { version = "0.11", features = ["json"] }
+# async-trait = "0.1.59"
+
+# Crypto
+rand_core = "0.6.4"
+rand_chacha = "0.3.1"

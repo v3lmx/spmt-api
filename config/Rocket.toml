@@ -1,0 +1,8 @@
+[default]
+address = "127.0.0.1"
+port = 8000
+log_level = "debug"
+
+# [default.tls]
+# key = "certs/localhost8443.key"     # Path or bytes to DER-encoded ASN.1 PKCS#1/#8 key.
+# certs = "certs/localhost8443.pem" # Path or bytes to DER-encoded X.509 TLS cert chain.
