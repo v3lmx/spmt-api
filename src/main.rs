@@ -8,9 +8,18 @@ use rspotify::{
     http::Form, prelude::*, scopes, AuthCodeSpotify, ClientResult, Config, Credentials, OAuth,
     Token,
 };
-use sea_orm::{DatabaseConnection, Database};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue, ConnectionTrait, Database, DatabaseConnection, DbErr,
+    EntityTrait, Set, Statement,
+};
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    thread::current,
+};
+
+mod entities;
+use entities::{prelude::*, *};
 
 #[derive(Serialize)]
 struct BasicResponse {
@@ -80,6 +89,7 @@ async fn login(session: Session) -> Result<impl Responder> {
 async fn callback(
     response_code: web::Query<ResponseCode>,
     session: Session,
+    db: web::Data<DatabaseConnection>,
 ) -> Result<impl Responder> {
     let mut spotify = init_spotify();
 
@@ -93,8 +103,43 @@ async fn callback(
             let mut token = token_mutex.lock().await.unwrap();
             let token: &Token = token.as_mut().expect("Token can't be empty as this point");
 
+            let db = db.get_ref();
+
             // TODO: store token in db using session id
             info!("Token: {}", token.access_token);
+
+            // TODO: maybe get user before taing token out of spotify we could avoid 2 new spotify objects
+            let spotify = AuthCodeSpotify::from_token(token.clone());
+
+            let current_user = spotify.me().await.unwrap();
+            log::info!("Current user : {}", current_user.id.to_string());
+            //current_user.id
+            let user: Option<user::Model> = User::find_by_id(current_user.id.to_string())
+                .one(db)
+                .await
+                .unwrap();
+            match user {
+                Some(user) => {
+                    let mut user: user::ActiveModel = user.into();
+                    user.token = Set(token.access_token.clone());
+                    let user: user::Model = user.update(db).await.unwrap();
+                    log::debug!("Token updated for user with id: `{}`", user.id);
+                }
+                None => {
+                    let new_user = user::ActiveModel {
+                        id: ActiveValue::Set(current_user.id.to_string()),
+                        name: ActiveValue::Set(
+                            current_user
+                                .display_name
+                                .unwrap_or_else(|| String::from("No name")),
+                        ),
+                        token: ActiveValue::Set(token.access_token.clone()),
+                    };
+                    let res = User::insert(new_user).exec(db).await.unwrap();
+                    log::debug!("Inserted user with id: `{}`", res.last_insert_id)
+                }
+            }
+
             // return AppResponse::Json(BasicResponse { msg: String::from("logged in!") });
             //AppResponse::Redirect(Redirect::to("http://localhost:5173/"))
             Ok(web::Redirect::to("http://localhost:5173/"))
@@ -111,13 +156,21 @@ async fn callback(
     // return Json(BasicResponse { msg: String::from("not logged in") });
 }
 
+async fn connect_db() -> Result<DatabaseConnection, DbErr> {
+    // TODO: connect to "spmt" instead of "public"
+    let db: DatabaseConnection =
+        Database::connect("postgres://spmt:spmt-database-dev@localhost/spmt").await?;
+    log::debug!("Ok connecting to db?");
+    Ok(db)
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     pretty_env_logger::init();
 
-    let db: DatabaseConnection = Database::connect("postgres://spmt@localhost/spmt").await.unwrap();
+    let db = connect_db().await.expect("Error creating databse");
 
-    HttpServer::new(|| {
+    HttpServer::new(move || {
         // TODOPROD: Permissive for local development
         let cors = Cors::permissive();
 
@@ -132,6 +185,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(RandomGenerator {
                 random: Arc::new(Mutex::new(random)),
             }))
+            .app_data(web::Data::new(db.clone()))
             .service(
                 web::scope("/api")
                     .route("/", web::get().to(hello))

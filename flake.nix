@@ -16,7 +16,6 @@
       with pkgs;
       {
         devShells.default = mkShell {
-          # shell = mkShell {
           buildInputs = [
             openssl
             pkg-config
@@ -25,11 +24,19 @@
             (rust-bin.stable.latest.default.override {
               extensions = [ "rust-src" ];
             })
+            postgresql
           ] ++ lib.optionals pkgs.stdenv.isDarwin (with darwin.apple_sdk.frameworks; [
             SystemConfiguration
             Security
           ]);
           shellHook = ''
+            ### Environment variables
+            export RUST_LOG=debug
+            export PATH=$PATH:/Users/v3lix/.cargo/bin
+            # Database
+            export NIX_SHELL_DIR=$PWD/.nix-shell
+            export PGDATA=$NIX_SHELL_DIR/db
+            export DATABASE_URL="postgres://spmt:spmt-database-dev@localhost/spmt"
           '';
         };
       }
