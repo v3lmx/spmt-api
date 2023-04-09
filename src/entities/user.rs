@@ -6,9 +6,9 @@ use sea_orm::entity::prelude::*;
 #[sea_orm(table_name = "user")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub id: String,
+    pub uuid: Uuid,
     pub name: String,
-    pub token: String,
+    pub spotify_id: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

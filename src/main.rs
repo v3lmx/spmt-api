@@ -9,14 +9,16 @@ use rspotify::{
     Token,
 };
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, ConnectionTrait, Database, DatabaseConnection, DbErr,
-    EntityTrait, Set, Statement,
+    ActiveModelTrait, ActiveValue, ColumnTrait, ConnectionTrait, Database, DatabaseConnection,
+    DbErr, EntityTrait, QueryFilter, Set, Statement,
 };
 use serde::{Deserialize, Serialize};
 use std::{
+    fmt::Display,
     sync::{Arc, Mutex},
     thread::current,
 };
+use uuid::Uuid;
 
 mod entities;
 use entities::{prelude::*, *};
@@ -37,8 +39,8 @@ struct RandomGenerator {
     random: Random,
 }
 
-#[derive(Deserialize)]
-struct SessionID(pub u128);
+#[derive(Deserialize, Debug)]
+struct UserID(pub u128);
 
 fn init_spotify() -> AuthCodeSpotify {
     let config = Config {
@@ -61,17 +63,29 @@ fn init_spotify() -> AuthCodeSpotify {
 }
 
 /// Index route
-async fn hello(session: Session) -> impl Responder {
-    HttpResponse::Ok().body("Hello world!")
+async fn hello(session: Session) -> Result<impl Responder> {
+    // session.insert("test", "test hello".to_string()).unwrap();
+    match session.get::<Uuid>("user_uuid") {
+        Ok(uuid) => {
+            log::debug!("uuid: {:?}", uuid);
+            let test = session.entries(); //session.get::<String>("test").unwrap();
+            return Ok(web::Json(BasicResponse {
+                msg: format!("Hello user {:?} ! test: {:?}", uuid, test),
+            }));
+        }
+        Err(_) => Ok(web::Json(BasicResponse {
+            msg: "Hello anon !".to_string(),
+        })),
+    }
 }
 
 /// Login route
 /// This should be the entrypoint to initiate login
 async fn login(session: Session) -> Result<impl Responder> {
-    let _session_id = session.get::<SessionID>("id")?;
-
-    if _session_id.is_some() {
+    if let Some(user_id) = session.get::<UserID>("user_id")? {
         // TODO: Check that the token is valid
+        log::debug!("User with id `{:?}` already logged in", user_id);
+
         return Ok(web::Json(BasicResponse {
             msg: String::from("User already logged in"),
         }));
@@ -112,33 +126,45 @@ async fn callback(
             let spotify = AuthCodeSpotify::from_token(token.clone());
 
             let current_user = spotify.me().await.unwrap();
-            log::info!("Current user : {}", current_user.id.to_string());
+            let user_spotify_id = current_user.id.to_string();
+            log::info!("Current user : {}", &user_spotify_id);
             //current_user.id
-            let user: Option<user::Model> = User::find_by_id(current_user.id.to_string())
+            let user: Option<user::Model> = User::find()
+                .filter(user::Column::SpotifyId.eq(&user_spotify_id))
                 .one(db)
                 .await
                 .unwrap();
-            match user {
+            let current_user_uuid = match user {
                 Some(user) => {
-                    let mut user: user::ActiveModel = user.into();
-                    user.token = Set(token.access_token.clone());
-                    let user: user::Model = user.update(db).await.unwrap();
-                    log::debug!("Token updated for user with id: `{}`", user.id);
+                    log::debug!("Retreived User uuid : {}", user.uuid);
+                    user.uuid
+                    // let mut user: user::ActiveModel = user.into();
+                    // user.token = Set(token.access_token.clone());
+                    // let user: user::Model = user.update(db).await.unwrap();
+                    // log::debug!("Token updated for user with id: `{}`", user.id);
                 }
                 None => {
+                    let new_user_uuid = Uuid::new_v4();
+
                     let new_user = user::ActiveModel {
-                        id: ActiveValue::Set(current_user.id.to_string()),
+                        uuid: ActiveValue::Set(new_user_uuid),
                         name: ActiveValue::Set(
                             current_user
                                 .display_name
                                 .unwrap_or_else(|| String::from("No name")),
                         ),
-                        token: ActiveValue::Set(token.access_token.clone()),
+                        spotify_id: ActiveValue::Set(Some(user_spotify_id)),
                     };
                     let res = User::insert(new_user).exec(db).await.unwrap();
-                    log::debug!("Inserted user with id: `{}`", res.last_insert_id)
+                    log::debug!("Inserted user with id: `{}`", res.last_insert_id);
+
+                    new_user_uuid
                 }
-            }
+            };
+            session.renew();
+            session.insert("user_uuid", current_user_uuid).unwrap();
+            session.insert("test", "test".to_string()).unwrap();
+            log::debug!("session entries : {:?}", session.entries());
 
             // return AppResponse::Json(BasicResponse { msg: String::from("logged in!") });
             //AppResponse::Redirect(Redirect::to("http://localhost:5173/"))
@@ -179,6 +205,7 @@ async fn main() -> std::io::Result<()> {
         let session = SessionMiddleware::new(CookieSessionStore::default(), cookies_key.clone());
 
         let random = ChaCha8Rng::seed_from_u64(OsRng.next_u64());
+
         App::new()
             .wrap(cors)
             .wrap(session)
