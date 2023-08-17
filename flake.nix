@@ -21,14 +21,20 @@
             pkg-config
             cargo-watch
             rust-analyzer
-            (rust-bin.stable.latest.default.override {
+            (rust-bin.selectLatestNightlyWith (toolchain: toolchain.default.override {
               extensions = [ "rust-src" ];
-            })
+              targets = [ "wasm32-unknown-unknown" ];
+            }))
+            # (rust-bin.nightly.latest.default.override {
+            #   extensions = [ "rust-src" ];
+            # })
+            trunk
             postgresql
-          ] ++ lib.optionals pkgs.stdenv.isDarwin (with darwin.apple_sdk.frameworks; [
-            SystemConfiguration
-            Security
-          ]);
+          ] ++ lib.optionals pkgs.stdenv.isDarwin (with darwin.apple_sdk.frameworks;
+            [
+              SystemConfiguration
+              Security
+            ]);
           shellHook = ''
             ### Environment variables
             export RUST_LOG=debug
