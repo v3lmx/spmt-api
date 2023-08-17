@@ -2,4 +2,10 @@
 
 pub mod prelude;
 
+pub mod album;
+pub mod artist;
+pub mod like;
+pub mod playlist;
+pub mod tag;
+pub mod track;
 pub mod user;

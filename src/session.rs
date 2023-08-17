@@ -1,13 +1,13 @@
 use actix_session::Session;
 use actix_web::{web, Responder, Result};
-use rspotify::{Token, AuthCodeSpotify};
-use rspotify::prelude::{OAuthClient, BaseClient};
-use sea_orm::{DatabaseConnection, EntityTrait, ColumnTrait, ActiveValue, QueryFilter};
+use rspotify::prelude::{BaseClient, OAuthClient};
+use rspotify::{AuthCodeSpotify, Token};
+use sea_orm::{ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::entities::{user, prelude::*};
-use crate::{BasicResponse, ResponseCode};
+use crate::entities::{prelude::*, user};
 use crate::spotify::init_spotify;
+use crate::{BasicResponse, ResponseCode};
 
 /// Login route
 /// This should be the entrypoint to initiate login
@@ -16,7 +16,9 @@ pub async fn login(session: Session) -> Result<impl Responder> {
         // TODO: Check that the token is valid
         log::debug!("User with id `{:?}` already logged in", user_uuid);
 
-        return Ok(web::Json(BasicResponse { msg: "http://localhost:5173/".to_string() }));
+        return Ok(web::Json(BasicResponse {
+            msg: "http://localhost:5173/".to_string(),
+        }));
         // return Ok(web::Redirect::to("http://localhost:5173/"));
     }
 
@@ -66,8 +68,8 @@ pub async fn callback(
                 .unwrap();
             let current_user_uuid = match user {
                 Some(user) => {
-                    log::debug!("Retreived User uuid : {}", user.uuid);
-                    user.uuid
+                    log::debug!("Retreived User uuid : {}", user.id);
+                    user.id
                     // let mut user: user::ActiveModel = user.into();
                     // user.token = Set(token.access_token.clone());
                     // let user: user::Model = user.update(db).await.unwrap();
@@ -77,13 +79,18 @@ pub async fn callback(
                     let new_user_uuid = Uuid::new_v4();
 
                     let new_user = user::ActiveModel {
-                        uuid: ActiveValue::Set(new_user_uuid),
+                        id: ActiveValue::Set(new_user_uuid),
                         name: ActiveValue::Set(
                             current_user
                                 .display_name
                                 .unwrap_or_else(|| String::from("No name")),
                         ),
                         spotify_id: ActiveValue::Set(Some(user_spotify_id)),
+                        email: ActiveValue::Set(
+                            current_user
+                                .email
+                                .unwrap_or_else(|| String::from("No name")),
+                        ),
                     };
                     let res = User::insert(new_user).exec(db).await.unwrap();
                     log::debug!("Inserted user with id: `{}`", res.last_insert_id);

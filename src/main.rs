@@ -1,19 +1,15 @@
 use actix_cors::Cors;
-use actix_session::{
-    storage::CookieSessionStore, Session, SessionMiddleware,
-};
+use actix_session::{storage::CookieSessionStore, Session, SessionMiddleware};
 use actix_web::{
-    cookie::{Key, SameSite}, web, App, HttpServer, Responder, Result,
+    cookie::{Key, SameSite},
+    web, App, HttpServer, Responder, Result,
 };
 
-use sea_orm::{
-    Database, DatabaseConnection, DbErr, 
-};
+use sea_orm::{Database, DatabaseConnection, DbErr};
 use serde::{Deserialize, Serialize};
 
-use spotify::get_playlists;
+use spotify::{get_playlists, make_playlist_wip};
 use uuid::Uuid;
-
 
 #[derive(Serialize)]
 struct BasicResponse {
@@ -31,9 +27,11 @@ pub struct ResponseCode {
 struct UserID(pub u128);
 
 mod entities;
-mod spotify;
+mod error;
 mod session;
-    use session::{login, callback};
+mod spotify;
+mod sync;
+use session::{callback, login};
 
 /// Index route
 async fn hello(session: Session) -> Result<impl Responder> {
@@ -52,6 +50,12 @@ async fn hello(session: Session) -> Result<impl Responder> {
     }
 }
 
+/// WIP
+async fn wip(session: Session, db: web::Data<DatabaseConnection>) -> Result<impl Responder> {
+    sync::sync(session, db.get_ref()).await.unwrap();
+    Ok("ok")
+}
+
 /// Index route
 async fn test_cookies(session: Session) -> Result<impl Responder> {
     session
@@ -62,12 +66,7 @@ async fn test_cookies(session: Session) -> Result<impl Responder> {
     }))
 }
 
-
-
-
-
 async fn connect_db() -> Result<DatabaseConnection, DbErr> {
-    // TODO: connect to "spmt" instead of "public"
     let db: DatabaseConnection =
         Database::connect("postgres://spmt:spmt-database-dev@localhost/spmt").await?;
     log::debug!("Ok connecting to db?");
@@ -75,10 +74,10 @@ async fn connect_db() -> Result<DatabaseConnection, DbErr> {
 }
 
 #[actix_web::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> Result<(), anyhow::Error> {
     pretty_env_logger::init();
 
-    let db = connect_db().await.expect("Error creating databse");
+    let db = connect_db().await?;
 
     // Cookies key needs to be outside of app context
     // or it keeps regenerating making it impossible to
@@ -116,13 +115,16 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/api")
                     .route("/", web::get().to(hello))
+                    .route("/wip", web::get().to(wip))
                     .route("/test_cookies", web::get().to(test_cookies))
                     .route("/login", web::get().to(login))
                     .route("/playlists", web::get().to(get_playlists))
-                    .route("/callback", web::get().to(callback)),
+                    .route("/callback", web::get().to(callback))
+                    .route("/make_playlist_wip", web::post().to(make_playlist_wip)),
             )
     })
     .bind(("0.0.0.0", 8000))?
     .run()
-    .await
+    .await?;
+    Ok(())
 }
