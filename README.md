@@ -4,6 +4,10 @@ Manage your playlists using custom rules and tags
 
 ⚠️ This repository is meant to be a proof of concept, some stuff might be sub-optimal or outright broken.
 
+For now the focus is exploring the features of the crate `rspotify`, and what can be done with the spotify API. Everything is ugly and not optimal.
+
+> Please don't judge me on the code quality, I know it's really bad right now :)
+
 ## Concept
 
 - Sync your music library into `spmt` (better name ideas welcome)
@@ -11,6 +15,10 @@ Manage your playlists using custom rules and tags
 - Define playlists based on rules that can make use of every metadata the music platform offers (genre, BPM, liked songs, whether a song is in another playlist, etc.) and your custom tags
 
 Example: You can make a playlist for your birthday party with all the songs that you liked, are in one of your playlists, are faster than 100 BPM, and are of Dance genre
+
+## Tech
+
+The backend is written in rust. The frontend is written in rust. Did I mention I like rust?
 
 ## Contributing
 
